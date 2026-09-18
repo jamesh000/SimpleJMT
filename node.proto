@@ -1,0 +1,27 @@
+syntax = "proto3";
+package node;
+
+option go_package = "./nodepb";
+
+message Node {
+        message InternalNode {
+                uint32 bitmap = 1;
+                repeated Child children = 2;
+        }
+
+        message LeafNode {
+                bytes id = 1;
+                bytes hash = 2;
+        }
+
+        oneof body {
+              InternalNode internal = 1;
+              LeafNode leaf = 2;
+        }
+}
+
+message Child {
+        uint64 version = 1;
+        bytes nibblepath = 2;
+        bytes hash = 3;
+}
