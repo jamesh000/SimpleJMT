@@ -11,12 +11,19 @@ type MemStore struct {
 	values map[KeyHash][]valueInstance
 }
 
+func NewMemStore() *MemStore {
+	return &MemStore{
+		nodes:  make(map[NodeKey]Node),
+		values: make(map[KeyHash][]valueInstance),
+	}
+}
+
 type valueInstance struct {
 	version uint64
 	val     Value
 }
 
-func (store MemStore) GetNode(key NodeKey) (Node, error) {
+func (store *MemStore) GetNode(key NodeKey) (Node, error) {
 	node, ok := store.nodes[key]
 	if !ok {
 		return nil, fmt.Errorf("Node %v:%v not found", key.version, key.nibblePath)
@@ -25,7 +32,7 @@ func (store MemStore) GetNode(key NodeKey) (Node, error) {
 	return node, nil
 }
 
-func (store MemStore) GetValue(key KeyHash, maxVersion uint64) (Value, error) {
+func (store *MemStore) GetValue(key KeyHash, maxVersion Version) (Value, error) {
 	values, ok := store.values[key]
 	if !ok {
 		return nil, fmt.Errorf("There is no value for key hash %v", key)
@@ -42,7 +49,7 @@ func (store MemStore) GetValue(key KeyHash, maxVersion uint64) (Value, error) {
 	return nil, fmt.Errorf("There is no value for key hash %v before or at version %v", key, maxVersion)
 }
 
-func (store MemStore) WriteNodeBatch(batch map[NodeKey]Node) error {
+func (store *MemStore) WriteNodeBatch(batch map[NodeKey]Node) error {
 	maps.Copy(store.nodes, batch)
 
 	return nil

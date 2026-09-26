@@ -37,7 +37,7 @@ func NewNibblePath(length int, data []byte) (*NibblePath, error) {
 }
 
 func (path *NibblePath) getNibble(pos int) (byte, error) {
-	if pos > path.length || pos < 0 {
+	if pos >= path.length || pos < 0 {
 		return 0, fmt.Errorf("out of range nibble access")
 	}
 

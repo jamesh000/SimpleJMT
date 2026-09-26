@@ -2,6 +2,7 @@ package jmt
 
 import (
 	"fmt"
+	"math/bits"
 	"slices"
 
 	pb "github.com/jamesh000/SimpleJMT/nodepb"
@@ -9,8 +10,8 @@ import (
 )
 
 type NodeKey struct {
-	version    uint64
-	nibblePath NibblePath
+	Version    Version
+	NibblePath NibblePath
 }
 
 type KeyHash = Hash
@@ -32,6 +33,10 @@ func (node InternalNode) SerializeNode() ([]byte, error) {
 	bitmap := uint16(0)
 	nibbles := make([]byte, 0, 16)
 	for nibble := range node.Children {
+		if nibble >= 16 {
+			return nil, fmt.Errorf("invalid nibble in map")
+		}
+
 		nibbles = append(nibbles, nibble)
 		bitmap |= 1 << nibble
 	}
@@ -96,6 +101,10 @@ func DeserializeNode(data []byte) (Node, error) {
 
 	switch body := nodePb.Body.(type) {
 	case *pb.Node_Internal:
+		if len(body.Internal.Children) != bits.OnesCount32(body.Internal.Bitmap) {
+			return nil, fmt.Errorf("bitmap does not match number of children")
+		}
+
 		children := make(map[byte]child)
 		currentChild := 0
 		for i := byte(0); i < 16; i++ {
@@ -104,6 +113,7 @@ func DeserializeNode(data []byte) (Node, error) {
 					version: body.Internal.Children[currentChild].Version,
 					hash:    body.Internal.Children[currentChild].ValueHash,
 				}
+				currentChild++
 			}
 		}
 
@@ -114,8 +124,11 @@ func DeserializeNode(data []byte) (Node, error) {
 			return nil, err
 		}
 
+		keyHash := KeyHash{}
+		copy(keyHash[:], body.Leaf.Id)
+
 		return LeafNode{
-				keyHash:   KeyHash(body.Leaf.Id),
+				keyHash:   keyHash,
 				valueHash: *valueHash,
 			},
 			nil
