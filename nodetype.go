@@ -9,10 +9,10 @@ import (
 
 type NodeKey struct {
 	version    uint64
-	nibblePath string
+	nibblePath NibblePath
 }
 
-type KeyHash [32]byte
+type KeyHash = Hash
 
 type Node interface {
 	SerializeNode() ([]byte, error)
@@ -33,7 +33,7 @@ func (node InternalNode) SerializeNode() ([]byte, error) {
 	for i, child := range node.Children {
 		childrenPb[i] = &pb.Child{
 			Version:    child.key.version,
-			Nibblepath: []byte(child.key.nibblePath),
+			Nibblepath: []byte(child.key.nibblePath.getAllNibbles()),
 			Hash:       child.hash,
 		}
 	}
@@ -92,7 +92,7 @@ func DeserializeNode(data []byte) (Node, error) {
 			children[i] = child{
 				key: NodeKey{
 					version:    childPb.Version,
-					nibblePath: string(childPb.Nibblepath),
+					nibblePath: childPb.Nibblepath,
 				},
 				hash: childPb.Hash,
 			}
