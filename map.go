@@ -1,4 +1,4 @@
-package main
+package jmt
 
 import (
 	"fmt"
@@ -7,13 +7,8 @@ import (
 )
 
 type MemStore struct {
-	nodes  map[memStoreKey]Node
+	nodes  map[NodeKey]Node
 	values map[KeyHash][]valueInstance
-}
-
-type memStoreKey struct {
-	version    Version
-	nibblePath string
 }
 
 type valueInstance struct {
@@ -22,10 +17,7 @@ type valueInstance struct {
 }
 
 func (store MemStore) GetNode(key NodeKey) (Node, error) {
-	node, ok := store.nodes[memStoreKey{
-		key.version,
-		string(key.nibblePath),
-	}]
+	node, ok := store.nodes[key]
 	if !ok {
 		return nil, fmt.Errorf("Node %v:%v not found", key.version, key.nibblePath)
 	}

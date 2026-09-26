@@ -1,4 +1,4 @@
-package main
+package jmt
 
 import "fmt"
 
@@ -6,22 +6,18 @@ type Version = uint64
 
 type JellyfishMerkleTree struct {
 	reader TreeReader
-	roots  map[Version]NodeKey
 }
 
-func (jmt JellyfishMerkleTree) lookup(version Version, key KeyHash) (*Value, error) {
-	root, ok := jmt.roots[version]
-	if !ok {
-		return nil, fmt.Errorf("No root node for version %v", version)
-	}
+func (jmt JellyfishMerkleTree) Lookup(version Version, key KeyHash) (*Value, error) {
+	// root nodes only have version, their nibble path is empty (zeroed)
+	currentKey := NodeKey{version: version} // start at root
 
-	currentKey := root
-	nibblePath, err := NewNibblePath(len(key), key)
+	keyPath, err := NewNibblePath(len(key)*2, key[:])
 	if err != nil {
 		return nil, err
 	}
 
-	for _, nibble := range nibblePath.Iter() {
+	for _, nibble := range keyPath.Iter() {
 		node, err := jmt.reader.GetNode(currentKey)
 		if err != nil {
 			return nil, err
@@ -29,10 +25,24 @@ func (jmt JellyfishMerkleTree) lookup(version Version, key KeyHash) (*Value, err
 
 		switch n := node.(type) {
 		case InternalNode:
-			// pull the current nibble
-			if n.Bitmap&(1<<nibble) == 0 {
+			// get the next child in the path if it exists
+			child, ok := n.Children[nibble]
+			if !ok {
 				return nil, nil
 			}
+
+			currentKey.version = child.version
+			currentKey.nibblePath.Append(nibble)
+		case LeafNode:
+			if n.keyHash == key {
+				foundValue := make(Value, len(n.valueHash))
+				copy(foundValue, n.valueHash[:])
+				return &foundValue, nil
+			}
+
+			return nil, nil
 		}
 	}
+
+	return nil, fmt.Errorf("reached end of key without finding value, erroneous node somewhere in tree")
 }

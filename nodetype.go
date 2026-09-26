@@ -1,7 +1,8 @@
-package main
+package jmt
 
 import (
 	"fmt"
+	"slices"
 
 	pb "github.com/jamesh000/SimpleJMT/nodepb"
 	"google.golang.org/protobuf/proto"
@@ -19,29 +20,37 @@ type Node interface {
 }
 
 type child struct {
-	key  NodeKey
-	hash []byte
+	version Version
+	hash    []byte
 }
 
 type InternalNode struct {
-	Bitmap   uint16
-	Children []child
+	Children map[byte]child
 }
 
 func (node InternalNode) SerializeNode() ([]byte, error) {
-	childrenPb := make([]*pb.Child, len(node.Children))
-	for i, child := range node.Children {
-		childrenPb[i] = &pb.Child{
-			Version:    child.key.version,
-			Nibblepath: []byte(child.key.nibblePath.getAllNibbles()),
-			Hash:       child.hash,
-		}
+	bitmap := uint16(0)
+	nibbles := make([]byte, 0, 16)
+	for nibble := range node.Children {
+		nibbles = append(nibbles, nibble)
+		bitmap |= 1 << nibble
+	}
+	slices.Sort(nibbles)
+
+	childrenPb := make([]*pb.Child, 0, len(nibbles))
+	for _, nibble := range nibbles {
+		currentChild := node.Children[nibble]
+		childrenPb = append(childrenPb,
+			&pb.Child{
+				Version:   currentChild.version,
+				ValueHash: currentChild.hash,
+			})
 	}
 
 	nodePb := &pb.Node{
 		Body: &pb.Node_Internal{
 			Internal: &pb.Node_InternalNode{
-				Bitmap:   uint32(node.Bitmap),
+				Bitmap:   uint32(bitmap),
 				Children: childrenPb,
 			},
 		},
@@ -57,15 +66,15 @@ func (node InternalNode) SerializeNode() ([]byte, error) {
 
 type LeafNode struct {
 	keyHash   KeyHash
-	valueHash []byte
+	valueHash Hash
 }
 
 func (node LeafNode) SerializeNode() ([]byte, error) {
 	nodePb := &pb.Node{
 		Body: &pb.Node_Leaf{
 			Leaf: &pb.Node_LeafNode{
-				Id:   node.keyHash[:],
-				Hash: node.valueHash,
+				Id:        node.keyHash[:],
+				ValueHash: node.valueHash[:],
 			},
 		},
 	}
@@ -87,26 +96,27 @@ func DeserializeNode(data []byte) (Node, error) {
 
 	switch body := nodePb.Body.(type) {
 	case *pb.Node_Internal:
-		children := make([]child, len(body.Internal.Children))
-		for i, childPb := range body.Internal.Children {
-			children[i] = child{
-				key: NodeKey{
-					version:    childPb.Version,
-					nibblePath: childPb.Nibblepath,
-				},
-				hash: childPb.Hash,
+		children := make(map[byte]child)
+		currentChild := 0
+		for i := byte(0); i < 16; i++ {
+			if body.Internal.Bitmap&(1<<i) != 0 {
+				children[i] = child{
+					version: body.Internal.Children[currentChild].Version,
+					hash:    body.Internal.Children[currentChild].ValueHash,
+				}
 			}
 		}
 
-		return InternalNode{
-				Bitmap:   uint16(body.Internal.Bitmap),
-				Children: children,
-			},
-			nil
+		return InternalNode{children}, nil
 	case *pb.Node_Leaf:
+		valueHash, err := new(Hash).FromBytes(body.Leaf.ValueHash)
+		if err != nil {
+			return nil, err
+		}
+
 		return LeafNode{
 				keyHash:   KeyHash(body.Leaf.Id),
-				valueHash: body.Leaf.Hash,
+				valueHash: *valueHash,
 			},
 			nil
 	}

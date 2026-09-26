@@ -11,7 +11,7 @@ message Node {
 
         message LeafNode {
                 bytes id = 1;
-                bytes hash = 2;
+                bytes valueHash = 2;
         }
 
         oneof body {
@@ -22,6 +22,5 @@ message Node {
 
 message Child {
         uint64 version = 1;
-        bytes nibblepath = 2;
-        bytes hash = 3;
+        bytes valueHash = 3;
 }

@@ -1,4 +1,4 @@
-package main
+package jmt
 
 import (
 	"crypto/sha256"
@@ -15,7 +15,7 @@ func (h Hash) String() string {
 }
 
 func (h *Hash) FromBytes(data []byte) (*Hash, error) {
-	if len(data) != DIGEST_LEN {
+	if len(data) != HashLen {
 		return nil, fmt.Errorf("Hash is wrong length")
 	}
 

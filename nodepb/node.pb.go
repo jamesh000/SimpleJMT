@@ -106,8 +106,7 @@ func (*Node_Leaf) isNode_Body() {}
 type Child struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       uint64                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	Nibblepath    []byte                 `protobuf:"bytes,2,opt,name=nibblepath,proto3" json:"nibblepath,omitempty"`
-	Hash          []byte                 `protobuf:"bytes,3,opt,name=hash,proto3" json:"hash,omitempty"`
+	ValueHash     []byte                 `protobuf:"bytes,3,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,16 +148,9 @@ func (x *Child) GetVersion() uint64 {
 	return 0
 }
 
-func (x *Child) GetNibblepath() []byte {
+func (x *Child) GetValueHash() []byte {
 	if x != nil {
-		return x.Nibblepath
-	}
-	return nil
-}
-
-func (x *Child) GetHash() []byte {
-	if x != nil {
-		return x.Hash
+		return x.ValueHash
 	}
 	return nil
 }
@@ -218,7 +210,7 @@ func (x *Node_InternalNode) GetChildren() []*Child {
 type Node_LeafNode struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            []byte                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Hash          []byte                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	ValueHash     []byte                 `protobuf:"bytes,2,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,9 +252,9 @@ func (x *Node_LeafNode) GetId() []byte {
 	return nil
 }
 
-func (x *Node_LeafNode) GetHash() []byte {
+func (x *Node_LeafNode) GetValueHash() []byte {
 	if x != nil {
-		return x.Hash
+		return x.ValueHash
 	}
 	return nil
 }
@@ -272,23 +264,20 @@ var File_node_proto protoreflect.FileDescriptor
 const file_node_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"node.proto\x12\x04node\"\xf1\x01\n" +
+	"node.proto\x12\x04node\"\xfb\x01\n" +
 	"\x04Node\x125\n" +
 	"\binternal\x18\x01 \x01(\v2\x17.node.Node.InternalNodeH\x00R\binternal\x12)\n" +
 	"\x04leaf\x18\x02 \x01(\v2\x13.node.Node.LeafNodeH\x00R\x04leaf\x1aO\n" +
 	"\fInternalNode\x12\x16\n" +
 	"\x06bitmap\x18\x01 \x01(\rR\x06bitmap\x12'\n" +
-	"\bchildren\x18\x02 \x03(\v2\v.node.ChildR\bchildren\x1a.\n" +
+	"\bchildren\x18\x02 \x03(\v2\v.node.ChildR\bchildren\x1a8\n" +
 	"\bLeafNode\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\fR\x02id\x12\x12\n" +
-	"\x04hash\x18\x02 \x01(\fR\x04hashB\x06\n" +
-	"\x04body\"U\n" +
+	"\x02id\x18\x01 \x01(\fR\x02id\x12\x1c\n" +
+	"\tvalueHash\x18\x02 \x01(\fR\tvalueHashB\x06\n" +
+	"\x04body\"?\n" +
 	"\x05Child\x12\x18\n" +
-	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x1e\n" +
-	"\n" +
-	"nibblepath\x18\x02 \x01(\fR\n" +
-	"nibblepath\x12\x12\n" +
-	"\x04hash\x18\x03 \x01(\fR\x04hashB\n" +
+	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x1c\n" +
+	"\tvalueHash\x18\x03 \x01(\fR\tvalueHashB\n" +
 	"Z\b./nodepbb\x06proto3"
 
 var (
