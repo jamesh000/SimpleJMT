@@ -26,7 +26,7 @@ type valueInstance struct {
 func (store *MemStore) GetNode(key NodeKey) (Node, error) {
 	node, ok := store.nodes[key]
 	if !ok {
-		return nil, fmt.Errorf("Node %v:%v not found", key.version, key.nibblePath)
+		return nil, fmt.Errorf("Node %v:%v not found", key.Version, key.NibblePath)
 	}
 
 	return node, nil

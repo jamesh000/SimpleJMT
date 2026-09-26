@@ -10,7 +10,7 @@ type JellyfishMerkleTree struct {
 
 func (jmt JellyfishMerkleTree) Lookup(version Version, key KeyHash) (*Hash, error) {
 	// root nodes only have version, their nibble path is empty (zeroed)
-	currentKey := NodeKey{version: version} // start at root
+	currentKey := NodeKey{Version: version} // start at root
 
 	keyPath, err := NewNibblePath(len(key)*2, key[:])
 	if err != nil {
@@ -31,8 +31,8 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key KeyHash) (*Hash, erro
 				return nil, nil
 			}
 
-			currentKey.version = child.version
-			currentKey.nibblePath.Append(nibble)
+			currentKey.Version = child.version
+			currentKey.NibblePath.Append(nibble)
 		case LeafNode:
 			if n.keyHash == key {
 				foundValueHash := n.valueHash
