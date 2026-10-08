@@ -5,8 +5,9 @@ option go_package = "./nodepb";
 
 message Node {
         message InternalNode {
-                uint32 bitmap = 1;
-                repeated Child children = 2;
+                repeated Child children = 1;
+                uint32 bitmap = 2;
+                uint32 leaves = 3;
         }
 
         message LeafNode {

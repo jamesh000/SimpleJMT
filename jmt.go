@@ -35,7 +35,7 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 		}
 
 		switch n := node.(type) {
-		case InternalNode:
+		case *InternalNode:
 			// get the next child in the path if it exists
 			child, ok := n.Children[nibble]
 			if !ok {
@@ -44,7 +44,7 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 
 			currentKey.Version = child.version
 			currentKey.NibblePath.Append(nibble)
-		case LeafNode:
+		case *LeafNode:
 			if n.keyHash == key {
 				foundValueHash := n.valueHash
 
@@ -58,6 +58,7 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 	return nil, fmt.Errorf("reached end of key without finding value, erroneous node somewhere in tree")
 }
 
+// work in progress
 func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, key Hash, valueHash Hash) error {
 	currentKey := NodeKey{Version: oldVersion}
 	nodeBatch := make(map[NodeKey]Node)
@@ -74,7 +75,7 @@ func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, ke
 		}
 
 		switch n := node.(type) {
-		case InternalNode:
+		case *InternalNode:
 			newNodeKey := NodeKey{Version: newVersion, NibblePath: currentKey.NibblePath}
 			newNode := n.Copy()
 			newNode.Children[nibble] = child{version: newVersion}
@@ -86,7 +87,7 @@ func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, ke
 			}
 
 			currentKey.Version = child.version
-		case LeafNode:
+		case *LeafNode:
 		}
 	}
 

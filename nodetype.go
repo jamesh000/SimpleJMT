@@ -16,8 +16,9 @@ import (
 type nodeType byte
 
 const (
-	leafType     nodeType = 0x00
-	internalType nodeType = 0x01
+	invalidType  nodeType = 0x00
+	leafType     nodeType = 0x01
+	internalType nodeType = 0x02
 )
 
 type NodeKey struct {
@@ -38,6 +39,40 @@ type child struct {
 
 type InternalNode struct {
 	Children map[byte]child
+	bitmap   uint16
+	leaves   uint16
+}
+
+// Create empty new internal node
+func NewInternalNode() *InternalNode {
+	return &InternalNode{
+		Children: make(map[byte]child),
+		bitmap:   uint16(0),
+		leaves:   uint16(0),
+	}
+}
+
+// Overwrites old child, but will likely never be run on anything but a new internal node
+// that either:
+// 1. Is totally blank
+// 2. Is a copy of an older internal node that is being updated
+func (node *InternalNode) insertChild(nibble byte, version Version, hash Hash, nodeType nodeType) {
+	if nibble >= 16 {
+		panic(fmt.Errorf("Trying to insert child at nibble that doesn't exist"))
+	}
+
+	node.bitmap |= 1 << nibble
+	if nodeType == leafType {
+		node.leaves |= 1 << nibble
+	} else {
+		node.leaves &^= 1 << nibble
+	}
+
+	node.Children[nibble] = child{
+		version:  version,
+		hash:     hash,
+		nodeType: nodeType,
+	}
 }
 
 func concatHash(nt nodeType, left Hash, right Hash) Hash {
@@ -48,72 +83,42 @@ func concatHash(nt nodeType, left Hash, right Hash) Hash {
 	return NewHash(concat)
 }
 
-func (node InternalNode) Hash() Hash {
-	tree := make([]*child, 32)
-	for i := byte(0); i <= 0xF; i++ {
-		child, ok := node.Children[i]
-		if ok {
-			tree[16+i] = &child
-		} else {
-			tree[16+i] = nil
-		}
-	}
-
-	for j := 8; ; j /= 2 {
-		for i := j; i < 2*j; i++ {
-			leftChild := tree[2*i]
-			rightChild := tree[2*i+1]
-			if leftChild != nil && rightChild != nil {
-				tree[i] = &child{
-					hash:     concatHash(internalType, leftChild.hash, rightChild.hash),
-					nodeType: internalType,
-				}
-			} else if leftChild != nil {
-				if leftChild.nodeType == leafType {
-					tree[i] = leftChild
-				} else {
-					tree[i] = &child{
-						hash:     concatHash(internalType, leftChild.hash, emptyPlaceholderHash),
-						nodeType: internalType,
-					}
-				}
-			} else if rightChild != nil {
-				if rightChild.nodeType == leafType {
-					tree[i] = rightChild
-				} else {
-					tree[i] = &child{
-						hash:     concatHash(internalType, emptyPlaceholderHash, rightChild.hash),
-						nodeType: internalType,
-					}
-				}
-			} else {
-				tree[i] = nil
-			}
-		}
-		if j == 1 {
-			break
-		}
-	}
-
-	root := tree[1]
-
-	if root == nil {
-		panic(fmt.Errorf("internal node has no children"))
-	}
-
-	return root.hash
+func (node *InternalNode) Hash() Hash {
+	return node.merkleHash(0, 16)
 }
 
-func (node InternalNode) Copy() InternalNode {
+func (node *InternalNode) merkleHash(pos int, width int) Hash {
+	mask := uint16(((uint32(1) << width) - 1) << pos)
+	bitmap, leaves := node.bitmap&mask, node.leaves&mask
+	if bitmap == 0 {
+		return emptyPlaceholderHash
+	} else if width == 1 || (bits.OnesCount16(bitmap) == 1 && leaves != 0) {
+		nibble := byte(bits.TrailingZeros16(bitmap))
+		child, ok := node.Children[nibble]
+		if !ok {
+			panic(fmt.Errorf("Malformed child map missing child at %x", nibble))
+		}
+		return child.hash
+	} else {
+		half := width / 2
+		left := node.merkleHash(pos, half)
+		right := node.merkleHash(pos+half, half)
+
+		return concatHash(internalType, left, right)
+	}
+}
+
+func (node *InternalNode) Copy() *InternalNode {
 	//clone := new(InternalNode)
 	//clone.Children = maps.Clone(node.Children)
-	return InternalNode{
+	return &InternalNode{
 		Children: maps.Clone(node.Children),
+		bitmap:   node.bitmap,
+		leaves:   node.leaves,
 	}
 }
 
-func (node InternalNode) SerializeNode() ([]byte, error) {
-	bitmap := uint16(0)
+func (node *InternalNode) SerializeNode() ([]byte, error) {
 	nibbles := make([]byte, 0, 16)
 	for nibble := range node.Children {
 		if nibble >= 16 {
@@ -121,7 +126,6 @@ func (node InternalNode) SerializeNode() ([]byte, error) {
 		}
 
 		nibbles = append(nibbles, nibble)
-		bitmap |= 1 << nibble
 	}
 	slices.Sort(nibbles)
 
@@ -139,8 +143,9 @@ func (node InternalNode) SerializeNode() ([]byte, error) {
 	nodePb := &pb.Node{
 		Body: &pb.Node_Internal{
 			Internal: &pb.Node_InternalNode{
-				Bitmap:   uint32(bitmap),
 				Children: childrenPb,
+				Bitmap:   uint32(node.bitmap),
+				Leaves:   uint32(node.leaves),
 			},
 		},
 	}
@@ -158,11 +163,11 @@ type LeafNode struct {
 	valueHash Hash
 }
 
-func (node LeafNode) Hash() Hash {
+func (node *LeafNode) Hash() Hash {
 	return concatHash(leafType, node.keyHash, node.valueHash)
 }
 
-func (node LeafNode) SerializeNode() ([]byte, error) {
+func (node *LeafNode) SerializeNode() ([]byte, error) {
 	nodePb := &pb.Node{
 		Body: &pb.Node_Leaf{
 			Leaf: &pb.Node_LeafNode{
@@ -209,7 +214,11 @@ func DeserializeNode(data []byte) (Node, error) {
 			}
 		}
 
-		return InternalNode{children}, nil
+		return &InternalNode{
+			Children: children,
+			bitmap:   uint16(body.Internal.Bitmap),
+			leaves:   uint16(body.Internal.Leaves),
+		}, nil
 	case *pb.Node_Leaf:
 		valueHash, err := new(Hash).FromBytes(body.Leaf.ValueHash)
 		if err != nil {
@@ -219,7 +228,7 @@ func DeserializeNode(data []byte) (Node, error) {
 		keyHash := Hash{}
 		copy(keyHash[:], body.Leaf.Id)
 
-		return LeafNode{
+		return &LeafNode{
 				keyHash:   keyHash,
 				valueHash: *valueHash,
 			},

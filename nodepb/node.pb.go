@@ -165,8 +165,9 @@ func (x *Child) GetType() uint32 {
 
 type Node_InternalNode struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Bitmap        uint32                 `protobuf:"varint,1,opt,name=bitmap,proto3" json:"bitmap,omitempty"`
-	Children      []*Child               `protobuf:"bytes,2,rep,name=children,proto3" json:"children,omitempty"`
+	Children      []*Child               `protobuf:"bytes,1,rep,name=children,proto3" json:"children,omitempty"`
+	Bitmap        uint32                 `protobuf:"varint,2,opt,name=bitmap,proto3" json:"bitmap,omitempty"`
+	Leaves        uint32                 `protobuf:"varint,3,opt,name=leaves,proto3" json:"leaves,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -201,6 +202,13 @@ func (*Node_InternalNode) Descriptor() ([]byte, []int) {
 	return file_node_proto_rawDescGZIP(), []int{0, 0}
 }
 
+func (x *Node_InternalNode) GetChildren() []*Child {
+	if x != nil {
+		return x.Children
+	}
+	return nil
+}
+
 func (x *Node_InternalNode) GetBitmap() uint32 {
 	if x != nil {
 		return x.Bitmap
@@ -208,11 +216,11 @@ func (x *Node_InternalNode) GetBitmap() uint32 {
 	return 0
 }
 
-func (x *Node_InternalNode) GetChildren() []*Child {
+func (x *Node_InternalNode) GetLeaves() uint32 {
 	if x != nil {
-		return x.Children
+		return x.Leaves
 	}
-	return nil
+	return 0
 }
 
 type Node_LeafNode struct {
@@ -272,13 +280,14 @@ var File_node_proto protoreflect.FileDescriptor
 const file_node_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"node.proto\x12\x04node\"\xfb\x01\n" +
+	"node.proto\x12\x04node\"\x93\x02\n" +
 	"\x04Node\x125\n" +
 	"\binternal\x18\x01 \x01(\v2\x17.node.Node.InternalNodeH\x00R\binternal\x12)\n" +
-	"\x04leaf\x18\x02 \x01(\v2\x13.node.Node.LeafNodeH\x00R\x04leaf\x1aO\n" +
-	"\fInternalNode\x12\x16\n" +
-	"\x06bitmap\x18\x01 \x01(\rR\x06bitmap\x12'\n" +
-	"\bchildren\x18\x02 \x03(\v2\v.node.ChildR\bchildren\x1a8\n" +
+	"\x04leaf\x18\x02 \x01(\v2\x13.node.Node.LeafNodeH\x00R\x04leaf\x1ag\n" +
+	"\fInternalNode\x12'\n" +
+	"\bchildren\x18\x01 \x03(\v2\v.node.ChildR\bchildren\x12\x16\n" +
+	"\x06bitmap\x18\x02 \x01(\rR\x06bitmap\x12\x16\n" +
+	"\x06leaves\x18\x03 \x01(\rR\x06leaves\x1a8\n" +
 	"\bLeafNode\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x1c\n" +
 	"\tvalueHash\x18\x02 \x01(\fR\tvalueHashB\x06\n" +
