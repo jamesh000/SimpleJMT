@@ -8,13 +8,13 @@ import (
 
 type MemStore struct {
 	nodes  map[NodeKey]Node
-	values map[KeyHash][]valueInstance
+	values map[Hash][]valueInstance
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
 		nodes:  make(map[NodeKey]Node),
-		values: make(map[KeyHash][]valueInstance),
+		values: make(map[Hash][]valueInstance),
 	}
 }
 
@@ -32,7 +32,7 @@ func (store *MemStore) GetNode(key NodeKey) (Node, error) {
 	return node, nil
 }
 
-func (store *MemStore) GetValue(key KeyHash, maxVersion Version) (Value, error) {
+func (store *MemStore) GetValue(key Hash, maxVersion Version) (Value, error) {
 	values, ok := store.values[key]
 	if !ok {
 		return nil, fmt.Errorf("There is no value for key hash %v", key)

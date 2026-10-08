@@ -1,8 +1,11 @@
 package jmt
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"iter"
 )
 
@@ -79,15 +82,42 @@ func (path *NibblePath) Append(nibble byte) error {
 	return nil
 }
 
-func (path NibblePath) Bytes() []byte {
+func (path *NibblePath) Bytes() []byte {
+	buf := bytes.Buffer{}
+
 	if path.length == 0 {
 		return nil
 	}
 
-	data := make([]byte, (path.length+1)/2)
-	copy(data, path.nibbles[:])
+	binary.Write(&buf, binary.BigEndian, path.length)
+	buf.Write(path.nibbles[:(path.length+1)/2])
 
-	return data
+	return buf.Bytes()
+}
+
+func (path *NibblePath) FromBytes(data []byte) (*NibblePath, error) {
+	r := bytes.NewReader(data)
+
+	if err := binary.Read(r, binary.BigEndian, &path.length); err != nil {
+		return nil, err
+	}
+
+	if r.Len() != (path.length+1)/2 {
+		return nil, fmt.Errorf("nibblepath length does not match actual size")
+	}
+
+	bytes, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if path.length%2 != 0 && bytes[len(bytes)-1]&0xF != 0 {
+		return nil, fmt.Errorf("garbage bits at end of bytes")
+	}
+
+	copy(path.nibbles[:], bytes)
+
+	return path, nil
 }
 
 func (path NibblePath) String() string {

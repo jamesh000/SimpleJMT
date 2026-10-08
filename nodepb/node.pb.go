@@ -106,7 +106,8 @@ func (*Node_Leaf) isNode_Body() {}
 type Child struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       uint64                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
-	ValueHash     []byte                 `protobuf:"bytes,3,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
+	ValueHash     []byte                 `protobuf:"bytes,2,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
+	Type          uint32                 `protobuf:"varint,3,opt,name=type,proto3" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -153,6 +154,13 @@ func (x *Child) GetValueHash() []byte {
 		return x.ValueHash
 	}
 	return nil
+}
+
+func (x *Child) GetType() uint32 {
+	if x != nil {
+		return x.Type
+	}
+	return 0
 }
 
 type Node_InternalNode struct {
@@ -274,10 +282,11 @@ const file_node_proto_rawDesc = "" +
 	"\bLeafNode\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x1c\n" +
 	"\tvalueHash\x18\x02 \x01(\fR\tvalueHashB\x06\n" +
-	"\x04body\"?\n" +
+	"\x04body\"S\n" +
 	"\x05Child\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x1c\n" +
-	"\tvalueHash\x18\x03 \x01(\fR\tvalueHashB\n" +
+	"\tvalueHash\x18\x02 \x01(\fR\tvalueHash\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\rR\x04typeB\n" +
 	"Z\b./nodepbb\x06proto3"
 
 var (

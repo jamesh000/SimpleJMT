@@ -4,7 +4,7 @@ type Value []byte
 
 type TreeReader interface {
 	GetNode(NodeKey) (Node, error)
-	GetValue(KeyHash, Version) (Value, error)
+	GetValue(Hash, Version) (Value, error)
 }
 
 type TreeWriter interface {

@@ -22,5 +22,6 @@ message Node {
 
 message Child {
         uint64 version = 1;
-        bytes valueHash = 3;
+        bytes valueHash = 2;
+        uint32 type = 3;
 }
