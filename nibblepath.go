@@ -62,13 +62,14 @@ func (path *NibblePath) Iter() iter.Seq2[int, byte] {
 	}
 }
 
-func (path *NibblePath) Append(nibble byte) error {
+func (fromPath *NibblePath) Append(nibble byte) (NibblePath, error) {
+	path := *fromPath
 	if path.length+1 > nibblePathMax {
-		return fmt.Errorf("Tried to append to full nibble path")
+		return NibblePath{}, fmt.Errorf("Tried to append to full nibble path")
 	}
 
 	if (nibble & 0xF0) != 0 {
-		return fmt.Errorf("Invalid nibble format for appending")
+		return NibblePath{}, fmt.Errorf("Invalid nibble format for appending")
 	}
 
 	if path.length%2 == 0 {
@@ -79,7 +80,7 @@ func (path *NibblePath) Append(nibble byte) error {
 
 	path.length++
 
-	return nil
+	return path, nil
 }
 
 func (path *NibblePath) Bytes() []byte {

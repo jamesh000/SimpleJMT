@@ -1,6 +1,8 @@
 package jmt
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Version = uint64
 
@@ -18,8 +20,6 @@ var emptyPlaceholderHash = Hash{
 	0x8c, 0x8c, 0x4c, 0x01,
 	0x9d, 0x53, 0xa1, 0xfa,
 }
-
-const depthGuess = 100
 
 func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) {
 	// root nodes only have version, their nibble path is empty (zeroed)
@@ -45,7 +45,10 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 			}
 
 			currentKey.Version = child.version
-			currentKey.NibblePath.Append(nibble)
+			currentKey.NibblePath, err = currentKey.NibblePath.Append(nibble)
+			if err != nil {
+				return nil, err
+			}
 		case *LeafNode:
 			if n.keyHash == key {
 				foundValueHash := n.valueHash
@@ -61,57 +64,122 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 }
 
 // work in progress
-func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, key Hash, valueHash Hash) error {
+func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, key Hash, valueHash Hash) (*Hash, error) {
 	currentKey := NodeKey{Version: oldVersion}
 	nodeBatch := make(map[NodeKey]Node)
-	nibbleStack := make([]byte, 0, nibblePathMax)
+
+	_, err := jmt.reader.GetNode(currentKey)
+	if err != nil {
+		leafRoot := &LeafNode{
+			keyHash:   key,
+			valueHash: valueHash,
+		}
+		nodeBatch[currentKey] = leafRoot
+		rootHash := leafRoot.Hash()
+
+		return &rootHash, nil
+	}
 
 	keyPath, err := NewNibblePath(len(key)*2, key[:])
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-search:
-	for _, nibble := range keyPath.Iter() {
-		node, err := jmt.reader.GetNode(currentKey)
-		if err != nil {
-			return err
-		}
+	// recurse to update the tree and get the root hash
+	rootChild, err := jmt.recursiveUpdate(
+		newVersion,
+		key,
+		valueHash,
+		nodeBatch,
+		keyPath,
+		0,
+		currentKey,
+	)
+	rootHash := rootChild.hash
 
-		switch n := node.(type) {
-		case *InternalNode:
-			newNodeKey := NodeKey{Version: newVersion, NibblePath: currentKey.NibblePath}
-			newNode := n.Copy()
-			nodeBatch[newNodeKey] = newNode
+	if err != nil {
+		return nil, err
+	}
 
-			// append the next nibble beforehand so currentkey holds the nibble path of the potential new leaf
-			currentKey.NibblePath.Append(nibble)
+	return &rootHash, nil
+}
 
-			c, ok := n.Children[nibble]
-			if !ok {
-				newNode.Children[nibble] = child{
-					version:  newVersion,
-					hash:     valueHash,
-					nodeType: leafType,
-				}
+func (jmt JellyfishMerkleTree) recursiveUpdate(
+	newVersion Version,
+	key Hash,
+	valueHash Hash,
+	nodeBatch map[NodeKey]Node,
+	keyPath *NibblePath,
+	pos int,
+	currentKey NodeKey,
+) (*child, error) {
+	readNode, err := jmt.reader.GetNode(currentKey)
+	if err != nil {
+		return nil, err
+	}
 
-				newNodeKey := NodeKey{Version: newVersion, NibblePath: currentKey.NibblePath}
-				newLeaf := &LeafNode{
-					keyHash:   key,
-					valueHash: valueHash,
-				}
-				nodeBatch[newNodeKey] = newLeaf
+	n := keyPath.nibbles[pos]
 
-				// done with the search portion
-				break search
+	switch node := readNode.(type) {
+	case *InternalNode:
+		newNode := node.Copy()
+		var newChild *child
+
+		c, ok := newNode.Children[n]
+		if !ok {
+			// create a add the leaf to the batch
+			leafNibblePath, err := currentKey.NibblePath.Append(n)
+			if err != nil {
+				return nil, err
+			}
+			leafKey := NodeKey{
+				newVersion,
+				leafNibblePath,
+			}
+			newLeaf := &LeafNode{
+				keyHash:   key,
+				valueHash: valueHash,
+			}
+			nodeBatch[leafKey] = newLeaf
+
+			newChild = &child{
+				version:  newVersion,
+				hash:     newLeaf.Hash(),
+				nodeType: leafType,
+			}
+		} else {
+			nextNibble, err := currentKey.NibblePath.Append(n)
+			if err != nil {
+				return nil, err
+			}
+			nextPath := NodeKey{
+				Version:    c.version,
+				NibblePath: nextNibble,
 			}
 
-			// update version
-			currentKey.Version = c.version
-
-		case *LeafNode:
+			newChild, err = jmt.recursiveUpdate(newVersion, key, valueHash, nodeBatch, keyPath, pos+1, nextPath)
+			if err != nil {
+				return nil, err
+			}
 		}
+
+		// Finalize the new node and add it to the batch
+		newNode.Children[n] = *newChild
+		newPath := NodeKey{
+			Version:    newVersion,
+			NibblePath: currentKey.NibblePath,
+		}
+		nodeBatch[newPath] = newNode
+
+		// return the child information
+		return &child{
+			version:  newVersion,
+			hash:     newNode.Hash(),
+			nodeType: internalType,
+		}, nil
+	case *LeafNode:
+		return nil, fmt.Errorf("Currently unimplemented")
 	}
 
-	return nil
+	return nil, fmt.Errorf("Invalid node type")
 }
