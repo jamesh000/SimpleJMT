@@ -13,6 +13,8 @@ message Node {
         message LeafNode {
                 bytes id = 1;
                 bytes valueHash = 2;
+                bytes valueIndexKeyHash = 3;
+                uint64 valueIndexVersion = 4;
         }
 
         oneof body {

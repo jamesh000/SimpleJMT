@@ -2,6 +2,7 @@ package jmt
 
 import (
 	"encoding/base64"
+	"errors"
 	"testing"
 )
 
@@ -98,6 +99,14 @@ func TestGoldenRootHashes(t *testing.T) {
 			if *gotRoot != tt.wantRoot {
 				t.Fatalf("Update() root hash = %s, want %s", gotRoot, tt.wantRoot)
 			}
+
+			storedRoot, err := tree.Root(tt.newVersion)
+			if err != nil {
+				t.Fatalf("Root() error = %v", err)
+			}
+			if storedRoot != tt.wantRoot {
+				t.Fatalf("Root() = %s, want %s", storedRoot, tt.wantRoot)
+			}
 		})
 	}
 
@@ -114,5 +123,52 @@ func TestGoldenRootHashes(t *testing.T) {
 		if got == nil || *got != want {
 			t.Fatalf("Lookup(%s) = %v, want %s", key, got, want)
 		}
+	}
+}
+
+func TestEmptyRoot(t *testing.T) {
+	store := NewMemStore()
+	tree := NewJellyfishMerkleTree(store, store)
+
+	root, err := tree.Root(0)
+	if err != nil {
+		t.Fatalf("Root() error = %v", err)
+	}
+	if root != EmptyRootHash {
+		t.Fatalf("Root() = %s, want empty root %s", root, EmptyRootHash)
+	}
+
+	value, err := tree.Lookup(0, hashByte(0x01))
+	if err != nil {
+		t.Fatalf("Lookup() error = %v", err)
+	}
+	if value != nil {
+		t.Fatalf("Lookup() = %v, want nil for empty tree", value)
+	}
+}
+
+type failingReader struct {
+	err error
+}
+
+func (r failingReader) GetNode(NodeKey) (Node, error) {
+	return nil, r.err
+}
+
+func TestUpdateDoesNotTreatStorageErrorAsEmptyTree(t *testing.T) {
+	readErr := errors.New("storage unavailable")
+	store := NewMemStore()
+	tree := NewJellyfishMerkleTree(failingReader{err: readErr}, store)
+
+	if _, err := tree.Root(1); !errors.Is(err, readErr) {
+		t.Fatalf("Root() error = %v, want %v", err, readErr)
+	}
+
+	_, err := tree.Update(0, 1, hashByte(0x01), hashByte(0x11))
+	if !errors.Is(err, readErr) {
+		t.Fatalf("Update() error = %v, want %v", err, readErr)
+	}
+	if len(store.nodes) != 0 {
+		t.Fatalf("Update() wrote %d nodes after a read failure", len(store.nodes))
 	}
 }

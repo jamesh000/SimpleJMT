@@ -3,50 +3,56 @@ package jmt
 import (
 	"fmt"
 	"maps"
-	"sort"
 )
 
 type MemStore struct {
 	nodes  map[NodeKey]Node
-	values map[Hash][]valueInstance
+	values map[ValueKey]Value
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
 		nodes:  make(map[NodeKey]Node),
-		values: make(map[Hash][]valueInstance),
+		values: make(map[ValueKey]Value),
 	}
-}
-
-type valueInstance struct {
-	version uint64
-	val     Value
 }
 
 func (store *MemStore) GetNode(key NodeKey) (Node, error) {
 	node, ok := store.nodes[key]
 	if !ok {
-		return nil, fmt.Errorf("Node %v:%v not found", key.Version, key.NibblePath)
+		return nil, fmt.Errorf("%w: version %d path %s", ErrNodeNotFound, key.Version, key.NibblePath.String())
 	}
 
 	return node, nil
 }
 
+// WriteValue stores a value at an exact value key. A nil value is a tombstone.
+func (store *MemStore) WriteValue(key ValueKey, value Value) error {
+	store.values[key] = value
+	return nil
+}
+
+// GetValue returns the newest value for key at or before maxVersion. A nil
+// value means the newest entry is a tombstone.
 func (store *MemStore) GetValue(key Hash, maxVersion Version) (Value, error) {
-	values, ok := store.values[key]
-	if !ok {
-		return nil, fmt.Errorf("There is no value for key hash %v", key)
+	var best ValueKey
+	found := false
+
+	for valueKey := range store.values {
+		if valueKey.KeyHash != key || valueKey.Version > maxVersion {
+			continue
+		}
+		if !found || valueKey.Version > best.Version {
+			best = valueKey
+			found = true
+		}
 	}
 
-	i := sort.Search(len(values), func(i int) bool {
-		return values[i].version > maxVersion
-	})
-
-	if i > 0 {
-		return values[i-1].val, nil
+	if !found {
+		return nil, fmt.Errorf("There is no value for key hash %v before or at version %v", key, maxVersion)
 	}
 
-	return nil, fmt.Errorf("There is no value for key hash %v before or at version %v", key, maxVersion)
+	return store.values[best], nil
 }
 
 func (store *MemStore) WriteNodeBatch(batch map[NodeKey]Node) error {

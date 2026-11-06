@@ -159,10 +159,21 @@ func (node *InternalNode) SerializeNode() ([]byte, error) {
 }
 
 type LeafNode struct {
-	keyHash   Hash
-	valueHash Hash
+	keyHash    Hash
+	valueHash  Hash
+	valueIndex ValueIndex
 }
 
+func NewLeafNode(keyHash Hash, valueHash Hash, valueIndex ValueIndex) *LeafNode {
+	return &LeafNode{
+		keyHash:    keyHash,
+		valueHash:  valueHash,
+		valueIndex: valueIndex,
+	}
+}
+
+// Hash commits to the key and value hashes only. The value index is metadata
+// used to locate the value in the separate versioned value store.
 func (node *LeafNode) Hash() Hash {
 	return concatHash(leafType, node.keyHash, node.valueHash)
 }
@@ -171,8 +182,10 @@ func (node *LeafNode) SerializeNode() ([]byte, error) {
 	nodePb := &pb.Node{
 		Body: &pb.Node_Leaf{
 			Leaf: &pb.Node_LeafNode{
-				Id:        node.keyHash[:],
-				ValueHash: node.valueHash[:],
+				Id:                node.keyHash[:],
+				ValueHash:         node.valueHash[:],
+				ValueIndexKeyHash: node.valueIndex.KeyHash[:],
+				ValueIndexVersion: node.valueIndex.Version,
 			},
 		},
 	}
@@ -228,11 +241,19 @@ func DeserializeNode(data []byte) (Node, error) {
 		keyHash := Hash{}
 		copy(keyHash[:], body.Leaf.Id)
 
-		return &LeafNode{
-				keyHash:   keyHash,
-				valueHash: *valueHash,
+		valueIndexKeyHash, err := new(Hash).FromBytes(body.Leaf.ValueIndexKeyHash)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewLeafNode(
+			keyHash,
+			*valueHash,
+			ValueIndex{
+				KeyHash: *valueIndexKeyHash,
+				Version: body.Leaf.ValueIndexVersion,
 			},
-			nil
+		), nil
 	}
 
 	return nil, fmt.Errorf("Invalid node type")

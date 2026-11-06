@@ -1,6 +1,7 @@
 package jmt
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -29,7 +30,47 @@ var emptyPlaceholderHash = Hash{
 	0x9d, 0x53, 0xa1, 0xfa,
 }
 
+// EmptyRootHash is the root hash of an empty tree.
+var EmptyRootHash = emptyPlaceholderHash
+
+// Root returns the root hash of the tree at version. A version with no stored
+// root node is treated as the empty tree.
+func (jmt JellyfishMerkleTree) Root(version Version) (Hash, error) {
+	root, err := jmt.reader.GetNode(NodeKey{Version: version})
+	if errors.Is(err, ErrNodeNotFound) {
+		return EmptyRootHash, nil
+	}
+	if err != nil {
+		return Hash{}, err
+	}
+
+	return root.Hash(), nil
+}
+
 func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) {
+	leaf, err := jmt.lookupLeaf(version, key)
+	if err != nil || leaf == nil {
+		return nil, err
+	}
+
+	valueHash := leaf.valueHash
+	return &valueHash, nil
+}
+
+// LookupWithIndex returns the value hash and the index of the value in the
+// separate versioned value store.
+func (jmt JellyfishMerkleTree) LookupWithIndex(version Version, key Hash) (*Hash, *ValueIndex, error) {
+	leaf, err := jmt.lookupLeaf(version, key)
+	if err != nil || leaf == nil {
+		return nil, nil, err
+	}
+
+	valueHash := leaf.valueHash
+	valueIndex := leaf.valueIndex
+	return &valueHash, &valueIndex, nil
+}
+
+func (jmt JellyfishMerkleTree) lookupLeaf(version Version, key Hash) (*LeafNode, error) {
 	// root nodes only have version, their nibble path is empty (zeroed)
 	currentKey := NodeKey{Version: version} // start at root
 
@@ -41,6 +82,11 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 	for _, nibble := range keyPath.Iter() {
 		node, err := jmt.reader.GetNode(currentKey)
 		if err != nil {
+			// A missing root is the empty tree. A missing non-root node means
+			// the tree is corrupt or the storage layer failed.
+			if errors.Is(err, ErrNodeNotFound) && currentKey.NibblePath.length == 0 {
+				return nil, nil
+			}
 			return nil, err
 		}
 
@@ -59,9 +105,7 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 			}
 		case *LeafNode:
 			if n.keyHash == key {
-				foundValueHash := n.valueHash
-
-				return &foundValueHash, nil
+				return n, nil
 			}
 
 			return nil, nil
@@ -81,10 +125,11 @@ func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, ke
 
 	_, err := jmt.reader.GetNode(currentKey)
 	if err != nil {
-		leafRoot := &LeafNode{
-			keyHash:   key,
-			valueHash: valueHash,
+		if !errors.Is(err, ErrNodeNotFound) {
+			return nil, err
 		}
+
+		leafRoot := NewLeafNode(key, valueHash, ValueIndex{KeyHash: key, Version: newVersion})
 		nodeBatch[NodeKey{Version: newVersion}] = leafRoot
 
 		if err := jmt.writer.WriteNodeBatch(nodeBatch); err != nil {
@@ -158,10 +203,7 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 				newVersion,
 				leafNibblePath,
 			}
-			newLeaf := &LeafNode{
-				keyHash:   key,
-				valueHash: valueHash,
-			}
+			newLeaf := NewLeafNode(key, valueHash, ValueIndex{KeyHash: key, Version: newVersion})
 			nodeBatch[leafKey] = newLeaf
 
 			newChild = &child{
@@ -202,10 +244,7 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 	case *LeafNode:
 		// Same key: this is just a newer version of the existing leaf.
 		if node.keyHash == key {
-			newLeaf := &LeafNode{
-				keyHash:   key,
-				valueHash: valueHash,
-			}
+			newLeaf := NewLeafNode(key, valueHash, ValueIndex{KeyHash: key, Version: newVersion})
 			nodeBatch[NodeKey{
 				Version:    newVersion,
 				NibblePath: currentKey.NibblePath,
@@ -264,10 +303,7 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 			return nil, err
 		}
 
-		newLeaf := &LeafNode{
-			keyHash:   key,
-			valueHash: valueHash,
-		}
+		newLeaf := NewLeafNode(key, valueHash, ValueIndex{KeyHash: key, Version: newVersion})
 
 		nodeBatch[NodeKey{
 			Version:    currentKey.Version,

@@ -224,11 +224,13 @@ func (x *Node_InternalNode) GetLeaves() uint32 {
 }
 
 type Node_LeafNode struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            []byte                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ValueHash     []byte                 `protobuf:"bytes,2,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                []byte                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ValueHash         []byte                 `protobuf:"bytes,2,opt,name=valueHash,proto3" json:"valueHash,omitempty"`
+	ValueIndexKeyHash []byte                 `protobuf:"bytes,3,opt,name=valueIndexKeyHash,proto3" json:"valueIndexKeyHash,omitempty"`
+	ValueIndexVersion uint64                 `protobuf:"varint,4,opt,name=valueIndexVersion,proto3" json:"valueIndexVersion,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Node_LeafNode) Reset() {
@@ -275,22 +277,38 @@ func (x *Node_LeafNode) GetValueHash() []byte {
 	return nil
 }
 
+func (x *Node_LeafNode) GetValueIndexKeyHash() []byte {
+	if x != nil {
+		return x.ValueIndexKeyHash
+	}
+	return nil
+}
+
+func (x *Node_LeafNode) GetValueIndexVersion() uint64 {
+	if x != nil {
+		return x.ValueIndexVersion
+	}
+	return 0
+}
+
 var File_node_proto protoreflect.FileDescriptor
 
 const file_node_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"node.proto\x12\x04node\"\x93\x02\n" +
+	"node.proto\x12\x04node\"\xf0\x02\n" +
 	"\x04Node\x125\n" +
 	"\binternal\x18\x01 \x01(\v2\x17.node.Node.InternalNodeH\x00R\binternal\x12)\n" +
 	"\x04leaf\x18\x02 \x01(\v2\x13.node.Node.LeafNodeH\x00R\x04leaf\x1ag\n" +
 	"\fInternalNode\x12'\n" +
 	"\bchildren\x18\x01 \x03(\v2\v.node.ChildR\bchildren\x12\x16\n" +
 	"\x06bitmap\x18\x02 \x01(\rR\x06bitmap\x12\x16\n" +
-	"\x06leaves\x18\x03 \x01(\rR\x06leaves\x1a8\n" +
+	"\x06leaves\x18\x03 \x01(\rR\x06leaves\x1a\x94\x01\n" +
 	"\bLeafNode\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x1c\n" +
-	"\tvalueHash\x18\x02 \x01(\fR\tvalueHashB\x06\n" +
+	"\tvalueHash\x18\x02 \x01(\fR\tvalueHash\x12,\n" +
+	"\x11valueIndexKeyHash\x18\x03 \x01(\fR\x11valueIndexKeyHash\x12,\n" +
+	"\x11valueIndexVersion\x18\x04 \x01(\x04R\x11valueIndexVersionB\x06\n" +
 	"\x04body\"S\n" +
 	"\x05Child\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x1c\n" +
