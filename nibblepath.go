@@ -1,11 +1,9 @@
 package jmt
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"iter"
 )
 
@@ -116,43 +114,38 @@ func (path *NibblePath) Prefix(length int) (*NibblePath, error) {
 }
 
 func (path *NibblePath) Bytes() []byte {
-	buf := bytes.Buffer{}
-
-	if path.length == 0 {
-		return nil
-	}
-
-	binary.Write(&buf, binary.BigEndian, path.length)
-	buf.Write(path.nibbles[:(path.length+1)/2])
-
-	return buf.Bytes()
+	usedBytes := (path.length + 1) / 2
+	encoded := make([]byte, 8+usedBytes)
+	binary.BigEndian.PutUint64(encoded[:8], uint64(path.length))
+	copy(encoded[8:], path.nibbles[:usedBytes])
+	return encoded
 }
 
 func (path *NibblePath) FromBytes(data []byte) (*NibblePath, error) {
-	r := bytes.NewReader(data)
-
-	if err := binary.Read(r, binary.BigEndian, &path.length); err != nil {
-		return nil, err
+	const lengthPrefixLen = 8
+	if len(data) < lengthPrefixLen {
+		return nil, fmt.Errorf("nibblepath encoding is too short")
 	}
 
-	if path.length < 0 || path.length > nibblePathMax {
+	length := binary.BigEndian.Uint64(data[:lengthPrefixLen])
+	if length > nibblePathMax {
 		return nil, fmt.Errorf("erroneous length")
 	}
 
-	if r.Len() != (path.length+1)/2 {
+	pathLen := int(length)
+	usedBytes := (pathLen + 1) / 2
+	if len(data) != lengthPrefixLen+usedBytes {
 		return nil, fmt.Errorf("nibblepath length does not match actual size")
 	}
 
-	bytes, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
+	path.nibbles = [nibbleStorageLen]byte{}
+	copy(path.nibbles[:], data[lengthPrefixLen:])
 
-	if path.length%2 != 0 && bytes[len(bytes)-1]&0xF != 0 {
+	if pathLen%2 != 0 && path.nibbles[pathLen/2]&0xF != 0 {
 		return nil, fmt.Errorf("garbage bits at end of bytes")
 	}
 
-	copy(path.nibbles[:], bytes)
+	path.length = pathLen
 	path.normalize()
 
 	return path, nil

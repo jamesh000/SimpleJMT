@@ -137,3 +137,25 @@ func mustNibblePath(t *testing.T, length int, data []byte) *NibblePath {
 	}
 	return path
 }
+
+func TestDecodeNodeKeyRejectsMalformed(t *testing.T) {
+	root, err := (NodeKey{Version: 1}).Encode()
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+
+	cases := [][]byte{
+		nil,
+		root[:8],
+		append(append([]byte(nil), root...), 0x00),
+	}
+	tooLongPath := append([]byte(nil), root...)
+	tooLongPath[8] = nibblePathMax + 1
+	cases = append(cases, tooLongPath)
+
+	for _, data := range cases {
+		if _, err := DecodeNodeKey(data); err == nil {
+			t.Fatalf("DecodeNodeKey(%x) succeeded, want error", data)
+		}
+	}
+}

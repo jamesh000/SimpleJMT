@@ -95,6 +95,68 @@ func TestValueIndexAcrossSplitsAndUpdates(t *testing.T) {
 	checkIndex(3, key2, 2)
 }
 
+func TestValueKeyVersionOrdering(t *testing.T) {
+	keyHash := hashByte(0x01)
+	version1 := ValueKey{KeyHash: keyHash, Version: 1}.Encode()
+	version2 := ValueKey{KeyHash: keyHash, Version: 2}.Encode()
+	version3 := ValueKey{KeyHash: keyHash, Version: 3}.Encode()
+
+	// Newer versions must sort before older versions.
+	if bytes.Compare(version3, version2) >= 0 {
+		t.Fatal("version 3 does not sort before version 2")
+	}
+	if bytes.Compare(version2, version1) >= 0 {
+		t.Fatal("version 2 does not sort before version 1")
+	}
+}
+
+func TestMemStoreGetValueVersions(t *testing.T) {
+	store := NewMemStore()
+	key := hashByte(0x01)
+
+	writes := []struct {
+		version Version
+		value   Value
+	}{
+		{version: 1, value: Value("one")},
+		{version: 3, value: Value("three")},
+		{version: 5, value: nil},
+	}
+	for _, write := range writes {
+		if err := store.WriteValue(ValueKey{KeyHash: key, Version: write.version}, write.value); err != nil {
+			t.Fatalf("WriteValue(%d) error = %v", write.version, err)
+		}
+	}
+
+	checks := []struct {
+		version Version
+		want    Value
+	}{
+		{version: 1, want: Value("one")},
+		{version: 2, want: Value("one")},
+		{version: 3, want: Value("three")},
+		{version: 4, want: Value("three")},
+		{version: 5, want: nil},
+		{version: 6, want: nil},
+	}
+	for _, check := range checks {
+		got, err := store.GetValue(key, check.version)
+		if err != nil {
+			t.Fatalf("GetValue(%d) error = %v", check.version, err)
+		}
+		if !bytes.Equal(got, check.want) {
+			t.Fatalf("GetValue(%d) = %q, want %q", check.version, got, check.want)
+		}
+	}
+
+	if _, err := store.GetValue(key, 0); err == nil {
+		t.Fatal("GetValue() succeeded before the first value")
+	}
+	if _, err := store.GetValue(hashByte(0x02), 100); err == nil {
+		t.Fatal("GetValue() succeeded for a missing key")
+	}
+}
+
 func TestUpdateStoresValueIndex(t *testing.T) {
 	store := NewMemStore()
 	tree := NewJellyfishMerkleTree(store, store)

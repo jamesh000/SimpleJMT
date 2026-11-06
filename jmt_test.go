@@ -172,3 +172,25 @@ func TestUpdateDoesNotTreatStorageErrorAsEmptyTree(t *testing.T) {
 		t.Fatalf("Update() wrote %d nodes after a read failure", len(store.nodes))
 	}
 }
+
+func TestLookupMissingNonRootNodeIsError(t *testing.T) {
+	store := NewMemStore()
+	tree := NewJellyfishMerkleTree(store, store)
+
+	key := hashByte(0x01)
+	root := NewInternalNode()
+	root.insertChild(0x0, 1, hashByte(0x99), leafType)
+
+	if err := store.WriteNodeBatch(map[NodeKey]Node{
+		{Version: 1}: root,
+	}); err != nil {
+		t.Fatalf("WriteNodeBatch() error = %v", err)
+	}
+
+	if _, err := tree.Lookup(1, key); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("Lookup() error = %v, want ErrNodeNotFound", err)
+	}
+	if _, _, _, err := tree.GetWithProof(1, key); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetWithProof() error = %v, want ErrNodeNotFound", err)
+	}
+}

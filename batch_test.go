@@ -122,6 +122,75 @@ func TestBatchUpdateExistingKeysMatchesSequentialUpdate(t *testing.T) {
 	}
 }
 
+func TestBatchUpdateMixedExistingAndNewKeys(t *testing.T) {
+	initialUpdates := map[Hash]Hash{
+		hashByte(0x10): hashByte(0xa0),
+		hashByte(0x20): hashByte(0xa1),
+		hashByte(0x30): hashByte(0xa2),
+		hashByte(0x40): hashByte(0xa3),
+	}
+	secondUpdates := map[Hash]Hash{
+		hashByte(0x10): hashByte(0xb0), // update an existing leaf
+		hashByte(0x30): hashByte(0xb1), // update another existing leaf
+		hashByte(0x11): hashByte(0xc0), // split the leaf at nibble 1
+		hashByte(0x31): hashByte(0xc1), // split the leaf at nibble 3
+		hashByte(0x12): hashByte(0xc2), // split the already-split nibble-1 subtree
+	}
+
+	batchStore := NewMemStore()
+	batchTree := NewJellyfishMerkleTree(batchStore, batchStore)
+	if _, err := batchTree.BatchUpdate(0, 1, initialUpdates); err != nil {
+		t.Fatalf("initial BatchUpdate() error = %v", err)
+	}
+	batchRoot, err := batchTree.BatchUpdate(1, 2, secondUpdates)
+	if err != nil {
+		t.Fatalf("second BatchUpdate() error = %v", err)
+	}
+
+	sequentialStore := NewMemStore()
+	sequentialTree := NewJellyfishMerkleTree(sequentialStore, sequentialStore)
+	version := Version(0)
+	for _, key := range []Hash{hashByte(0x10), hashByte(0x20), hashByte(0x30), hashByte(0x40)} {
+		version++
+		if _, err := sequentialTree.Update(version-1, version, key, initialUpdates[key]); err != nil {
+			t.Fatalf("initial Update(%s) error = %v", key, err)
+		}
+	}
+	for _, key := range []Hash{hashByte(0x10), hashByte(0x30), hashByte(0x11), hashByte(0x31), hashByte(0x12)} {
+		version++
+		if _, err := sequentialTree.Update(version-1, version, key, secondUpdates[key]); err != nil {
+			t.Fatalf("second Update(%s) error = %v", key, err)
+		}
+	}
+
+	sequentialRoot, err := sequentialTree.Root(version)
+	if err != nil {
+		t.Fatalf("Root() error = %v", err)
+	}
+	if *batchRoot != sequentialRoot {
+		t.Fatalf("BatchUpdate() root = %s, sequential root = %s", batchRoot, sequentialRoot)
+	}
+
+	want := map[Hash]Hash{
+		hashByte(0x10): secondUpdates[hashByte(0x10)],
+		hashByte(0x20): initialUpdates[hashByte(0x20)],
+		hashByte(0x30): secondUpdates[hashByte(0x30)],
+		hashByte(0x40): initialUpdates[hashByte(0x40)],
+		hashByte(0x11): secondUpdates[hashByte(0x11)],
+		hashByte(0x31): secondUpdates[hashByte(0x31)],
+		hashByte(0x12): secondUpdates[hashByte(0x12)],
+	}
+	for key, wantValue := range want {
+		got, err := batchTree.Lookup(2, key)
+		if err != nil {
+			t.Fatalf("Lookup(%s) error = %v", key, err)
+		}
+		if got == nil || *got != wantValue {
+			t.Fatalf("Lookup(%s) = %v, want %s", key, got, wantValue)
+		}
+	}
+}
+
 func TestPebbleBatchUpdatePersists(t *testing.T) {
 	dir := t.TempDir()
 
