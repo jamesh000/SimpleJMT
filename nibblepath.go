@@ -17,6 +17,22 @@ type NibblePath struct {
 	nibbles [nibbleStorageLen]byte
 }
 
+// normalize clears storage that is not part of the logical path. NibblePath is
+// used as part of NodeKey, which is a map key, so equal paths must have
+// byte-for-byte equal storage.
+func (path *NibblePath) normalize() {
+	usedBytes := (path.length + 1) / 2
+	for i := usedBytes; i < nibbleStorageLen; i++ {
+		path.nibbles[i] = 0
+	}
+
+	// If the path ends on a high nibble, clear the unused low nibble of the
+	// final byte so the path remains well-formed.
+	if path.length%2 != 0 {
+		path.nibbles[path.length/2] &= 0xF0
+	}
+}
+
 func NewNibblePath(length int, data []byte) (*NibblePath, error) {
 	if length > nibblePathMax || length < 0 {
 		return nil, fmt.Errorf("erroneous length")
@@ -79,6 +95,7 @@ func (fromPath *NibblePath) Append(nibble byte) (NibblePath, error) {
 	}
 
 	path.length++
+	path.normalize()
 
 	return path, nil
 }
@@ -93,12 +110,7 @@ func (path *NibblePath) Prefix(length int) (*NibblePath, error) {
 		length: length,
 	}
 	copy(prefix.nibbles[:], path.nibbles[:])
-
-	// If the prefix ends on a high nibble, clear the unused low nibble of the
-	// final byte so the path remains well-formed.
-	if length%2 != 0 {
-		prefix.nibbles[length/2] &= 0xF0
-	}
+	prefix.normalize()
 
 	return prefix, nil
 }
@@ -123,6 +135,10 @@ func (path *NibblePath) FromBytes(data []byte) (*NibblePath, error) {
 		return nil, err
 	}
 
+	if path.length < 0 || path.length > nibblePathMax {
+		return nil, fmt.Errorf("erroneous length")
+	}
+
 	if r.Len() != (path.length+1)/2 {
 		return nil, fmt.Errorf("nibblepath length does not match actual size")
 	}
@@ -137,6 +153,7 @@ func (path *NibblePath) FromBytes(data []byte) (*NibblePath, error) {
 	}
 
 	copy(path.nibbles[:], bytes)
+	path.normalize()
 
 	return path, nil
 }

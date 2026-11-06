@@ -75,7 +75,7 @@ func TestGoldenRootHashes(t *testing.T) {
 			newVersion: 3,
 			key:        key1,
 			valueHash:  value1Updated,
-			wantRoot:   mustHash(t, "8kp1YxLQ3jQWzfVgOF+u6S9BPvedrAqqeppShlhb4dg="),
+			wantRoot:   mustHash(t, "fPQKbWdQZAg7F4Ty1ci0KegjqzETZ1XO/Z4+xtUILXM="),
 		},
 		{
 			name:       "insert key3",
@@ -83,7 +83,7 @@ func TestGoldenRootHashes(t *testing.T) {
 			newVersion: 4,
 			key:        key3,
 			valueHash:  value3,
-			wantRoot:   mustHash(t, "+gPrk1nOVSqOC2K1rtVj6W9kQ2F6zrKQIk/3HvbpbCw="),
+			wantRoot:   mustHash(t, "mfFwhhhq5VR4+6wcA80YdF8pasMqg8b0clw5psgQsv8="),
 		},
 	}
 
@@ -99,5 +99,20 @@ func TestGoldenRootHashes(t *testing.T) {
 				t.Fatalf("Update() root hash = %s, want %s", gotRoot, tt.wantRoot)
 			}
 		})
+	}
+
+	wantValues := map[Hash]Hash{
+		key1: value1Updated,
+		key2: value2,
+		key3: value3,
+	}
+	for key, want := range wantValues {
+		got, err := tree.Lookup(4, key)
+		if err != nil {
+			t.Fatalf("Lookup(%s) error = %v", key, err)
+		}
+		if got == nil || *got != want {
+			t.Fatalf("Lookup(%s) = %v, want %s", key, got, want)
+		}
 	}
 }
