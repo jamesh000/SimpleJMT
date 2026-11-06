@@ -79,7 +79,9 @@ func (jmt JellyfishMerkleTree) lookupLeaf(version Version, key Hash) (*LeafNode,
 		return nil, err
 	}
 
-	for _, nibble := range keyPath.Iter() {
+	// A leaf can live at depth HashLen*2 when keys differ only in the last
+	// nibble, so visit depths 0 through HashLen*2 inclusive.
+	for depth := 0; depth <= HashLen*2; depth++ {
 		node, err := jmt.reader.GetNode(currentKey)
 		if err != nil {
 			// A missing root is the empty tree. A missing non-root node means
@@ -92,6 +94,11 @@ func (jmt JellyfishMerkleTree) lookupLeaf(version Version, key Hash) (*LeafNode,
 
 		switch n := node.(type) {
 		case *InternalNode:
+			nibble, err := keyPath.getNibble(depth)
+			if err != nil {
+				return nil, err
+			}
+
 			// get the next child in the path if it exists
 			child, ok := n.Children[nibble]
 			if !ok {
