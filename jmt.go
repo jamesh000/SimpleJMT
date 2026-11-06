@@ -8,6 +8,14 @@ type Version = uint64
 
 type JellyfishMerkleTree struct {
 	reader TreeReader
+	writer TreeWriter
+}
+
+func NewJellyfishMerkleTree(reader TreeReader, writer TreeWriter) *JellyfishMerkleTree {
+	return &JellyfishMerkleTree{
+		reader: reader,
+		writer: writer,
+	}
 }
 
 var emptyPlaceholderHash = Hash{
@@ -63,8 +71,11 @@ func (jmt JellyfishMerkleTree) Lookup(version Version, key Hash) (*Hash, error) 
 	return nil, fmt.Errorf("reached end of key without finding value, erroneous node somewhere in tree")
 }
 
-// work in progress
 func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, key Hash, valueHash Hash) (*Hash, error) {
+	if jmt.writer == nil {
+		return nil, fmt.Errorf("JellyfishMerkleTree has no writer")
+	}
+
 	currentKey := NodeKey{Version: oldVersion}
 	nodeBatch := make(map[NodeKey]Node)
 
@@ -74,9 +85,13 @@ func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, ke
 			keyHash:   key,
 			valueHash: valueHash,
 		}
-		nodeBatch[currentKey] = leafRoot
-		rootHash := leafRoot.Hash()
+		nodeBatch[NodeKey{Version: newVersion}] = leafRoot
 
+		if err := jmt.writer.WriteNodeBatch(nodeBatch); err != nil {
+			return nil, err
+		}
+
+		rootHash := leafRoot.Hash()
 		return &rootHash, nil
 	}
 
@@ -95,11 +110,15 @@ func (jmt JellyfishMerkleTree) Update(oldVersion Version, newVersion Version, ke
 		0,
 		currentKey,
 	)
-	rootHash := rootChild.hash
-
 	if err != nil {
 		return nil, err
 	}
+
+	if err := jmt.writer.WriteNodeBatch(nodeBatch); err != nil {
+		return nil, err
+	}
+
+	rootHash := rootChild.hash
 
 	return &rootHash, nil
 }
@@ -118,16 +137,19 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 		return nil, err
 	}
 
-	n := keyPath.nibbles[pos]
-
 	switch node := readNode.(type) {
 	case *InternalNode:
+		n, err := keyPath.getNibble(pos)
+		if err != nil {
+			return nil, err
+		}
+
 		newNode := node.Copy()
 		var newChild *child
 
 		c, ok := newNode.Children[n]
 		if !ok {
-			// create a add the leaf to the batch
+			// create and add the leaf to the batch
 			leafNibblePath, err := currentKey.NibblePath.Append(n)
 			if err != nil {
 				return nil, err
@@ -164,7 +186,7 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 		}
 
 		// Finalize the new node and add it to the batch
-		newNode.Children[n] = *newChild
+		newNode.insertChild(n, newChild.version, newChild.hash, newChild.nodeType)
 		newPath := NodeKey{
 			Version:    newVersion,
 			NibblePath: currentKey.NibblePath,
@@ -178,7 +200,131 @@ func (jmt JellyfishMerkleTree) recursiveUpdate(
 			nodeType: internalType,
 		}, nil
 	case *LeafNode:
-		return nil, fmt.Errorf("Currently unimplemented")
+		// Same key: this is just a newer version of the existing leaf.
+		if node.keyHash == key {
+			newLeaf := &LeafNode{
+				keyHash:   key,
+				valueHash: valueHash,
+			}
+			nodeBatch[NodeKey{
+				Version:    newVersion,
+				NibblePath: currentKey.NibblePath,
+			}] = newLeaf
+
+			return &child{
+				version:  newVersion,
+				hash:     newLeaf.Hash(),
+				nodeType: leafType,
+			}, nil
+		}
+
+		// Different keys: the leaf and the new key share the prefix up to
+		// currentKey.NibblePath. Add internal nodes until the keys diverge so
+		// the two leaves can be told apart.
+		existingKeyPath, err := NewNibblePath(HashLen*2, node.keyHash[:])
+		if err != nil {
+			return nil, err
+		}
+
+		splitIndex := pos
+		for splitIndex < HashLen*2 {
+			existingNibble, err := existingKeyPath.getNibble(splitIndex)
+			if err != nil {
+				return nil, err
+			}
+			newNibble, err := keyPath.getNibble(splitIndex)
+			if err != nil {
+				return nil, err
+			}
+			if existingNibble != newNibble {
+				break
+			}
+			splitIndex++
+		}
+		if splitIndex >= HashLen*2 {
+			return nil, fmt.Errorf("keys differ but share the entire nibble path")
+		}
+
+		existingNibble, err := existingKeyPath.getNibble(splitIndex)
+		if err != nil {
+			return nil, err
+		}
+		newNibble, err := keyPath.getNibble(splitIndex)
+		if err != nil {
+			return nil, err
+		}
+
+		// Leaves live one nibble below the internal node that splits them.
+		existingLeafPath, err := existingKeyPath.Prefix(splitIndex + 1)
+		if err != nil {
+			return nil, err
+		}
+		newLeafPath, err := keyPath.Prefix(splitIndex + 1)
+		if err != nil {
+			return nil, err
+		}
+
+		newLeaf := &LeafNode{
+			keyHash:   key,
+			valueHash: valueHash,
+		}
+
+		nodeBatch[NodeKey{
+			Version:    currentKey.Version,
+			NibblePath: *existingLeafPath,
+		}] = node
+		nodeBatch[NodeKey{
+			Version:    newVersion,
+			NibblePath: *newLeafPath,
+		}] = newLeaf
+
+		splitNode := NewInternalNode()
+		splitNode.insertChild(existingNibble, currentKey.Version, node.Hash(), leafType)
+		splitNode.insertChild(newNibble, newVersion, newLeaf.Hash(), leafType)
+
+		splitPath, err := keyPath.Prefix(splitIndex)
+		if err != nil {
+			return nil, err
+		}
+		nodeBatch[NodeKey{
+			Version:    newVersion,
+			NibblePath: *splitPath,
+		}] = splitNode
+
+		currentChild := &child{
+			version:  newVersion,
+			hash:     splitNode.Hash(),
+			nodeType: internalType,
+		}
+
+		// Chain single-child internal nodes back up to the position of the
+		// original leaf.
+		for depth := splitIndex - 1; depth >= pos; depth-- {
+			nibble, err := keyPath.getNibble(depth)
+			if err != nil {
+				return nil, err
+			}
+
+			parent := NewInternalNode()
+			parent.insertChild(nibble, currentChild.version, currentChild.hash, currentChild.nodeType)
+
+			parentPath, err := keyPath.Prefix(depth)
+			if err != nil {
+				return nil, err
+			}
+			nodeBatch[NodeKey{
+				Version:    newVersion,
+				NibblePath: *parentPath,
+			}] = parent
+
+			currentChild = &child{
+				version:  newVersion,
+				hash:     parent.Hash(),
+				nodeType: internalType,
+			}
+		}
+
+		return currentChild, nil
 	}
 
 	return nil, fmt.Errorf("Invalid node type")

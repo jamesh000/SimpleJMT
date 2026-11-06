@@ -83,6 +83,26 @@ func (fromPath *NibblePath) Append(nibble byte) (NibblePath, error) {
 	return path, nil
 }
 
+// Prefix returns a new NibblePath containing the first length nibbles of path.
+func (path *NibblePath) Prefix(length int) (*NibblePath, error) {
+	if length < 0 || length > path.length {
+		return nil, fmt.Errorf("prefix length out of range")
+	}
+
+	prefix := &NibblePath{
+		length: length,
+	}
+	copy(prefix.nibbles[:], path.nibbles[:])
+
+	// If the prefix ends on a high nibble, clear the unused low nibble of the
+	// final byte so the path remains well-formed.
+	if length%2 != 0 {
+		prefix.nibbles[length/2] &= 0xF0
+	}
+
+	return prefix, nil
+}
+
 func (path *NibblePath) Bytes() []byte {
 	buf := bytes.Buffer{}
 
