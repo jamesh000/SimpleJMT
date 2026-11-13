@@ -3,6 +3,9 @@ package jmt
 import (
 	"reflect"
 	"testing"
+
+	pb "github.com/jamesh000/SimpleJMT/nodepb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestInternalNodeSerializationRoundTrip(t *testing.T) {
@@ -70,4 +73,83 @@ func TestInternalNodeCopyIsIndependent(t *testing.T) {
 	if _, ok := clone.Children[0x1]; !ok {
 		t.Fatal("copy is missing the inserted child")
 	}
+}
+
+func TestDeserializeNodeRejectsMalformedData(t *testing.T) {
+	valueHash := hashByte(0x11)
+	valueIndexKeyHash := hashByte(0x01)
+
+	malformedLeaf := &pb.Node{
+		Body: &pb.Node_Leaf{
+			Leaf: &pb.Node_LeafNode{
+				Id:                []byte{0x01},
+				ValueHash:         valueHash[:],
+				ValueIndexKeyHash: valueIndexKeyHash[:],
+			},
+		},
+	}
+	leafData, err := proto.Marshal(malformedLeaf)
+	if err != nil {
+		t.Fatalf("proto.Marshal(leaf) error = %v", err)
+	}
+
+	oversizedBitmap := &pb.Node{
+		Body: &pb.Node_Internal{
+			Internal: &pb.Node_InternalNode{
+				Bitmap: 1 << 16,
+			},
+		},
+	}
+	bitmapData, err := proto.Marshal(oversizedBitmap)
+	if err != nil {
+		t.Fatalf("proto.Marshal(bitmap) error = %v", err)
+	}
+
+	invalidLeaves := &pb.Node{
+		Body: &pb.Node_Internal{
+			Internal: &pb.Node_InternalNode{
+				Bitmap: 1,
+				Leaves: 2,
+			},
+		},
+	}
+	leavesData, err := proto.Marshal(invalidLeaves)
+	if err != nil {
+		t.Fatalf("proto.Marshal(leaves) error = %v", err)
+	}
+
+	shortChildHash := &pb.Node{
+		Body: &pb.Node_Internal{
+			Internal: &pb.Node_InternalNode{
+				Bitmap: 1,
+				Leaves: 1,
+				Children: []*pb.Child{
+					{
+						Version:   1,
+						ValueHash: []byte{0x01},
+						Type:      uint32(leafType),
+					},
+				},
+			},
+		},
+	}
+	childData, err := proto.Marshal(shortChildHash)
+	if err != nil {
+		t.Fatalf("proto.Marshal(child) error = %v", err)
+	}
+
+	for name, data := range map[string][]byte{
+		"empty":            nil,
+		"short leaf key":   leafData,
+		"oversized bitmap": bitmapData,
+		"invalid leaves":   leavesData,
+		"short child hash": childData,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DeserializeNode(data); err == nil {
+				t.Fatal("DeserializeNode() succeeded, want error")
+			}
+		})
+	}
+
 }

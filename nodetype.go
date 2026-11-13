@@ -207,21 +207,49 @@ func DeserializeNode(data []byte) (Node, error) {
 
 	switch body := nodePb.Body.(type) {
 	case *pb.Node_Internal:
-		if len(body.Internal.Children) != bits.OnesCount32(body.Internal.Bitmap) {
+		if body.Internal == nil {
+			return nil, fmt.Errorf("internal node body is nil")
+		}
+		if body.Internal.Bitmap > 0xFFFF || body.Internal.Leaves > 0xFFFF {
+			return nil, fmt.Errorf("internal node bitmap exceeds 16 bits")
+		}
+
+		bitmap := uint16(body.Internal.Bitmap)
+		leaves := uint16(body.Internal.Leaves)
+		if leaves&^bitmap != 0 {
+			return nil, fmt.Errorf("leaf bitmap is not a subset of child bitmap")
+		}
+		if len(body.Internal.Children) != bits.OnesCount16(bitmap) {
 			return nil, fmt.Errorf("bitmap does not match number of children")
 		}
 
 		children := make(map[byte]child)
 		currentChild := 0
 		for i := byte(0); i < 16; i++ {
-			if body.Internal.Bitmap&(1<<i) != 0 {
-				var hash Hash
-				copy(hash[:], body.Internal.Children[currentChild].ValueHash)
+			if bitmap&(1<<i) != 0 {
+				childPb := body.Internal.Children[currentChild]
+				if childPb == nil {
+					return nil, fmt.Errorf("internal node has nil child")
+				}
+
+				hash, err := new(Hash).FromBytes(childPb.ValueHash)
+				if err != nil {
+					return nil, err
+				}
+
+				if childPb.Type != uint32(leafType) && childPb.Type != uint32(internalType) {
+					return nil, fmt.Errorf("invalid child type %d", childPb.Type)
+				}
+				childType := nodeType(childPb.Type)
+				isLeaf := leaves&(1<<i) != 0
+				if isLeaf != (childType == leafType) {
+					return nil, fmt.Errorf("child type does not match leaf bitmap at nibble %x", i)
+				}
 
 				children[i] = child{
-					version:  body.Internal.Children[currentChild].Version,
-					hash:     hash,
-					nodeType: nodeType(body.Internal.Children[currentChild].Type),
+					version:  childPb.Version,
+					hash:     *hash,
+					nodeType: childType,
 				}
 				currentChild++
 			}
@@ -229,17 +257,23 @@ func DeserializeNode(data []byte) (Node, error) {
 
 		return &InternalNode{
 			Children: children,
-			bitmap:   uint16(body.Internal.Bitmap),
-			leaves:   uint16(body.Internal.Leaves),
+			bitmap:   bitmap,
+			leaves:   leaves,
 		}, nil
 	case *pb.Node_Leaf:
-		valueHash, err := new(Hash).FromBytes(body.Leaf.ValueHash)
+		if body.Leaf == nil {
+			return nil, fmt.Errorf("leaf node body is nil")
+		}
+
+		keyHash, err := new(Hash).FromBytes(body.Leaf.Id)
 		if err != nil {
 			return nil, err
 		}
 
-		keyHash := Hash{}
-		copy(keyHash[:], body.Leaf.Id)
+		valueHash, err := new(Hash).FromBytes(body.Leaf.ValueHash)
+		if err != nil {
+			return nil, err
+		}
 
 		valueIndexKeyHash, err := new(Hash).FromBytes(body.Leaf.ValueIndexKeyHash)
 		if err != nil {
@@ -247,7 +281,7 @@ func DeserializeNode(data []byte) (Node, error) {
 		}
 
 		return NewLeafNode(
-			keyHash,
+			*keyHash,
 			*valueHash,
 			ValueIndex{
 				KeyHash: *valueIndexKeyHash,
